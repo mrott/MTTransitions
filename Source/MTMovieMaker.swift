@@ -188,6 +188,122 @@ public class MTMovieMaker: NSObject {
         }
     }
     
+    /// Create video from images Slideshow with animations at the end of the frames.
+    /// - Parameters:
+    ///   - images: The input images. Should be same width and height.
+    ///   - effects: The transition applied to switch images. The number of effects must equals to images.count - 1.
+    ///   - frameDuration: The duration each image display.
+    ///   - transitionDuration: The duration of transition.
+    ///   - audioURL: The local url of audio to be mixed to the video.
+    ///   - completion: completion callback.
+    /// - Throws: Throws an exception.
+    public func createSlideshowVideo(with images: [MTIImage],
+                                     effects: [MTTransition.Effect],
+                                     frameDuration: TimeInterval = 1,
+                                     transitionDuration: TimeInterval = 0.8,
+                                     audioURL: URL? = nil,
+                                     completion: MTMovieMakerCompletion? = nil) throws {
+        
+        
+        guard images.count >= 2 else {
+            throw MTMovieMakerError.imagesMustMoreThanTwo
+        }
+        guard effects.count == images.count - 1 else {
+            throw MTMovieMakerError.imagesAndEffectsDoesNotMatch
+        }
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try FileManager.default.removeItem(at: outputURL)
+        }
+        
+        writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+        let outputSize = images.first!.size
+        let videoSettings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecH264,
+            AVVideoWidthKey: outputSize.width,
+            AVVideoHeightKey: outputSize.height
+        ]
+        let writerInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        let attributes = sourceBufferAttributes(outputSize: outputSize)
+        let pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: writerInput,
+                                                                      sourcePixelBufferAttributes: attributes)
+        writer?.add(writerInput)
+        
+        guard let success = writer?.startWriting(), success == true else {
+            fatalError("Can not start writing")
+        }
+        
+        guard let pixelBufferPool = pixelBufferAdaptor.pixelBufferPool else {
+            fatalError("AVAssetWriterInputPixelBufferAdaptor pixelBufferPool empty")
+        }
+        
+        self.writer?.startSession(atSourceTime: .zero)
+        writerInput.requestMediaDataWhenReady(on: self.writingQueue) {
+            var index = 0
+            while index < (images.count - 1) {
+                var presentTime = CMTimeMake(value: Int64((frameDuration * Double(index + 1) - transitionDuration) * 1000), timescale: 1000)
+                let transition = effects[index].transition
+                transition.inputImage = images[index]
+                transition.destImage = images[index + 1]
+                transition.duration = transitionDuration
+                
+                let frameBeginTime = presentTime
+                
+                //  Render first frame
+                if index == 0 {
+                    while !writerInput.isReadyForMoreMediaData {
+                        Thread.sleep(forTimeInterval: 0.01)
+                    }
+                    var pixelBuffer: CVPixelBuffer?
+                    CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+                    if let buffer = pixelBuffer, let frame = transition.outputImage {
+                        try? MTTransition.context?.render(frame, to: buffer)
+                        pixelBufferAdaptor.append(buffer, withPresentationTime: CMTime.zero)
+                    }
+                }
+                
+                let frameCount = 29
+                for counter in 0 ... frameCount {
+                    autoreleasepool {
+                        while !writerInput.isReadyForMoreMediaData {
+                            Thread.sleep(forTimeInterval: 0.01)
+                        }
+                        let progress = Float(counter) / Float(frameCount)
+                        transition.progress = progress
+                        let frameTime = CMTimeMake(value: Int64(transitionDuration * Double(progress) * 1000), timescale: 1000)
+                        presentTime = CMTimeAdd(frameBeginTime, frameTime)
+                        var pixelBuffer: CVPixelBuffer?
+                        CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+                        if let buffer = pixelBuffer, let frame = transition.outputImage {
+                            try? MTTransition.context?.render(frame, to: buffer)
+                            pixelBufferAdaptor.append(buffer, withPresentationTime: presentTime)
+                        }
+                    }
+                }
+                index += 1
+            }
+            writerInput.markAsFinished()
+            self.writer?.finishWriting {
+                if let audioURL = audioURL, self.writer?.error == nil {
+                    do {
+                        let audioAsset = AVAsset(url: audioURL)
+                        let videoAsset = AVAsset(url: self.outputURL)
+                        try self.mixAudio(audioAsset, video: videoAsset, completion: completion)
+                    } catch {
+                        completion?(.failure(error))
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        if let error = self.writer?.error {
+                            completion?(.failure(error))
+                        } else {
+                            completion?(.success(self.outputURL))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     private func sourceBufferAttributes(outputSize: CGSize) -> [String: Any] {
         let attributes: [String: Any] = [
             (kCVPixelBufferPixelFormatTypeKey as String): kCVPixelFormatType_32BGRA,
