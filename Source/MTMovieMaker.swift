@@ -188,6 +188,34 @@ public class MTMovieMaker: NSObject {
         }
     }
     
+    /// Create video from images.
+    /// - Parameters:
+    ///   - images: The input images. Should be same width and height.
+    ///   - effects: The transition applied to switch images. The number of effects must equals to images.count - 1.
+    ///   - frameDuration: The duration each image display.
+    ///   - transitionDuration: The duration of transition.
+    ///   - audioURL: The local url of audio to be mixed to the video.
+    ///   - completion: completion callback.
+    /// - Throws: Throws an exception.
+    public func createSlideshowVideo(with images: [UIImage],
+                                     effects: [MTTransition.Effect],
+                                     frameDuration: TimeInterval = 1,
+                                     transitionDuration: TimeInterval = 0.8,
+                                     audioURL: URL? = nil,
+                                     completion: @escaping MTMovieMakerCompletion) throws {
+        
+        
+        let inputImages = images.map {
+            return MTIImage(cgImage: $0.cgImage!, options: [.SRGB: false]).oriented(.downMirrored)
+        }
+        try createSlideshowVideo(with: inputImages,
+                                 effects: effects,
+                                 frameDuration: frameDuration,
+                                 transitionDuration: transitionDuration,
+                                 audioURL: audioURL,
+                                 completion: completion)
+    }
+    
     /// Create video from images Slideshow with animations at the end of the frames.
     /// - Parameters:
     ///   - images: The input images. Should be same width and height.
