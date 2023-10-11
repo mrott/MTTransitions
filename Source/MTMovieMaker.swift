@@ -199,8 +199,8 @@ public class MTMovieMaker: NSObject {
     /// - Throws: Throws an exception.
     public func createSlideshowVideo(with images: [UIImage],
                                      effects: [MTTransition.Effect],
-                                     frameDuration: TimeInterval = 1,
-                                     transitionDuration: TimeInterval = 0.8,
+                                     frameDurations: [TimeInterval],
+                                     transitionDurations: [TimeInterval],
                                      audioURL: URL? = nil,
                                      completion: @escaping MTMovieMakerCompletion) throws {
         
@@ -210,8 +210,8 @@ public class MTMovieMaker: NSObject {
         }
         try createSlideshowVideo(with: inputImages,
                                  effects: effects,
-                                 frameDuration: frameDuration,
-                                 transitionDuration: transitionDuration,
+                                 frameDurations: frameDurations,
+                                 transitionDurations: transitionDurations,
                                  audioURL: audioURL,
                                  completion: completion)
     }
@@ -227,8 +227,8 @@ public class MTMovieMaker: NSObject {
     /// - Throws: Throws an exception.
     public func createSlideshowVideo(with images: [MTIImage],
                                      effects: [MTTransition.Effect],
-                                     frameDuration: TimeInterval = 1,
-                                     transitionDuration: TimeInterval = 0.8,
+                                     frameDurations: [TimeInterval],
+                                     transitionDurations: [TimeInterval],
                                      audioURL: URL? = nil,
                                      completion: MTMovieMakerCompletion? = nil) throws {
         
@@ -268,6 +268,8 @@ public class MTMovieMaker: NSObject {
         writerInput.requestMediaDataWhenReady(on: self.writingQueue) {
             var index = 0
             while index < (images.count - 1) {
+                let frameDuration = frameDurations[index]
+                let transitionDuration = transitionDurations[index]
                 var presentTime = CMTimeMake(value: Int64((frameDuration * Double(index + 1) - transitionDuration) * 1000), timescale: 1000)
                 let transition = effects[index].transition
                 transition.inputImage = images[index]
