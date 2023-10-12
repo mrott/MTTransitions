@@ -12,6 +12,7 @@ import MetalPetal
 public enum MTMovieMakerError: Error {
     case imagesMustMoreThanTwo
     case imagesAndEffectsDoesNotMatch
+    case audioError
 }
 
 public typealias MTMovieMakerProgressHandler = (Float) -> Void
@@ -406,8 +407,11 @@ public class MTMovieMaker: NSObject {
         exportSession?.outputFileType = .mp4
         exportSession?.outputURL = tempURL
         exportSession?.timeRange = videoTimeRange
-        exportSession?.exportAsynchronously { [weak self] in
-            guard let self = self, let exporter = self.exportSession else { return }
+        exportSession?.exportAsynchronously {
+            guard let exporter = self.exportSession else {
+                completion?(.failure(MTMovieMakerError.audioError))
+                return
+            }
             DispatchQueue.main.async {
                 if let error = exporter.error {
                     completion?(.failure(error))
