@@ -266,30 +266,38 @@ public class MTMovieMaker: NSObject {
         
         self.writer?.startSession(atSourceTime: .zero)
         writerInput.requestMediaDataWhenReady(on: self.writingQueue) {
+            
+            var presentTime = CMTime.zero
+            
+            //  Render first frame
+            while !writerInput.isReadyForMoreMediaData {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            var pixelBuffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+            let firstTransition = effects[0].transition
+            firstTransition.inputImage = images[0]
+            firstTransition.destImage = images[1]
+            firstTransition.duration = transitionDurations[0]
+            firstTransition.progress = 0
+            if let buffer = pixelBuffer, let frame = firstTransition.outputImage {
+                try? MTTransition.context?.render(frame, to: buffer)
+                pixelBufferAdaptor.append(buffer, withPresentationTime: CMTime.zero)
+            }
+            
             var index = 0
             while index < (images.count - 1) {
                 let frameDuration = frameDurations[index]
                 let transitionDuration = transitionDurations[index]
-                var presentTime = CMTimeMake(value: Int64((frameDuration * Double(index + 1) - transitionDuration) * 1000), timescale: 1000)
+                let frameTime = CMTimeMake(value: Int64((frameDuration - transitionDuration) * 1000), timescale: 1000)
+                presentTime = CMTimeAdd(presentTime, frameTime)
+                
                 let transition = effects[index].transition
                 transition.inputImage = images[index]
                 transition.destImage = images[index + 1]
                 transition.duration = transitionDuration
                 
                 let frameBeginTime = presentTime
-                
-                //  Render first frame
-                if index == 0 {
-                    while !writerInput.isReadyForMoreMediaData {
-                        Thread.sleep(forTimeInterval: 0.01)
-                    }
-                    var pixelBuffer: CVPixelBuffer?
-                    CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
-                    if let buffer = pixelBuffer, let frame = transition.outputImage {
-                        try? MTTransition.context?.render(frame, to: buffer)
-                        pixelBufferAdaptor.append(buffer, withPresentationTime: CMTime.zero)
-                    }
-                }
                 
                 let frameCount = 29
                 for counter in 0 ... frameCount {
@@ -311,6 +319,19 @@ public class MTMovieMaker: NSObject {
                 }
                 index += 1
             }
+            
+//            //  Render last frame
+//            let frameTime = CMTimeMake(value: Int64((frameDurations[index]) * 1000), timescale: 1000)
+//            presentTime = CMTimeAdd(presentTime, frameTime)
+//            while !writerInput.isReadyForMoreMediaData {
+//                Thread.sleep(forTimeInterval: 0.01)
+//            }
+//            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+//            if let buffer = pixelBuffer, let frame = effects.last?.transition.outputImage {
+//                try? MTTransition.context?.render(frame, to: buffer)
+//                pixelBufferAdaptor.append(buffer, withPresentationTime: presentTime)
+//            }
+            
             writerInput.markAsFinished()
             self.writer?.finishWriting {
                 if let audioURL = audioURL, self.writer?.error == nil {
