@@ -265,6 +265,8 @@ public class MTMovieMaker: NSObject {
             fatalError("AVAssetWriterInputPixelBufferAdaptor pixelBufferPool empty")
         }
         
+        let timescale: Int32 = 600
+        
         self.writer?.startSession(atSourceTime: .zero)
         writerInput.requestMediaDataWhenReady(on: self.writingQueue) {
             
@@ -281,6 +283,7 @@ public class MTMovieMaker: NSObject {
             firstTransition.destImage = images[1]
             firstTransition.duration = transitionDurations[0]
             firstTransition.progress = 0
+            
             if let buffer = pixelBuffer, let frame = firstTransition.outputImage {
                 try? MTTransition.context?.render(frame, to: buffer)
                 pixelBufferAdaptor.append(buffer, withPresentationTime: CMTime.zero)
@@ -290,7 +293,7 @@ public class MTMovieMaker: NSObject {
             while index < (images.count - 1) {
                 let frameDuration = frameDurations[index]
                 let transitionDuration = transitionDurations[index]
-                let frameTime = CMTimeMake(value: Int64((frameDuration - transitionDuration) * 1000), timescale: 1000)
+                let frameTime = CMTimeMake(value: Int64((frameDuration - transitionDuration) * Double(timescale)), timescale: timescale)
                 presentTime = CMTimeAdd(presentTime, frameTime)
                 
                 let transition = effects[index].transition
@@ -308,10 +311,11 @@ public class MTMovieMaker: NSObject {
                         }
                         let progress = Float(counter) / Float(frameCount)
                         transition.progress = progress
-                        let frameTime = CMTimeMake(value: Int64(transitionDuration * Double(progress) * 1000), timescale: 1000)
+                        let frameTime = CMTimeMake(value: Int64(transitionDuration * Double(progress) * Double(timescale)), timescale: timescale)
                         presentTime = CMTimeAdd(frameBeginTime, frameTime)
                         var pixelBuffer: CVPixelBuffer?
                         CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
+                        
                         if let buffer = pixelBuffer, let frame = transition.outputImage {
                             try? MTTransition.context?.render(frame, to: buffer)
                             pixelBufferAdaptor.append(buffer, withPresentationTime: presentTime)
@@ -320,18 +324,6 @@ public class MTMovieMaker: NSObject {
                 }
                 index += 1
             }
-            
-//            //  Render last frame
-//            let frameTime = CMTimeMake(value: Int64((frameDurations[index]) * 1000), timescale: 1000)
-//            presentTime = CMTimeAdd(presentTime, frameTime)
-//            while !writerInput.isReadyForMoreMediaData {
-//                Thread.sleep(forTimeInterval: 0.01)
-//            }
-//            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pixelBufferPool, &pixelBuffer)
-//            if let buffer = pixelBuffer, let frame = effects.last?.transition.outputImage {
-//                try? MTTransition.context?.render(frame, to: buffer)
-//                pixelBufferAdaptor.append(buffer, withPresentationTime: presentTime)
-//            }
             
             writerInput.markAsFinished()
             self.writer?.finishWriting {
@@ -430,3 +422,4 @@ public class MTMovieMaker: NSObject {
         }
     }
 }
+
